@@ -25,10 +25,12 @@ class Frame {
         Page* pagina;
         bool dirtyFlag;
         int pinCount;
+        bool pin; //Pin o unnpin page
+
         int lastUsed;
         bool refBit;
     public:
-        Frame(int id): dirtyFlag(0), pinCount(0), lastUsed(0), refBit(false) {
+        Frame(int id): dirtyFlag(0), pinCount(0), lastUsed(0), refBit(false), pin(false) {
             this->id = id;
             pagina = nullptr;
         }
@@ -36,13 +38,23 @@ class Frame {
         int getId(){ return id;  }
         
         int getPinCount(){  return pinCount;    }
+
+        bool getPin(){  return pin;    }  //Pin o unnpin page
+
+        int getLastUsed(){  return lastUsed;    }
+
+        bool getRefBit(){  return refBit;    }
+
+        void setRefBit(bool state){  this->refBit = state;      }
         
         void resetFrame() {
             delete pagina;
             pagina = nullptr;
             dirtyFlag = false;
             pinCount = 0;
+            pin = 0; //Pin o unnpin page
             lastUsed = 0;
+            refBit = false;
         }
 
         Page* getPagina() { return pagina; }
@@ -53,10 +65,11 @@ class Frame {
         bool getDirty() { return dirtyFlag; }
         void setDirty(bool accion) { dirtyFlag = accion; }
         void saveChanges() { if (pagina) pagina->save(); }
-        void incrementLastUsed(){   lastUsed++; }
-        int getLastUsed(){  return lastUsed;    }
-        bool getRefBit(){  return refBit;    }
-        void setRefBit(bool state){  this->refBit = state;      }
+        void incrementLastUsed() {   lastUsed++; }
+
+        void pinPage() { this->pin = true; }  //Pin o unnpin page
+
+        void unnpinPage() { this->pin = false; } //Pin o unnpin page
 
 };
 
@@ -94,7 +107,8 @@ class BufferManager {
                 bufferPool[i] = new Frame(i);
             }
 
-            methodReplace = "CLOCK"; //INDICADOR DE MÉTODO DE REEMPLAZO
+            //MRU, LRU, CLOCK
+            methodReplace = "LRU"; //INDICADOR DE MÉTODO DE REEMPLAZO
         }
 
         ~BufferManager() {
@@ -148,16 +162,16 @@ class BufferManager {
         */
         void printFrame(){
             cout << "\t> Buffer Pool\n";
-            cout << "\tframe_id    page_id    mode    pinCount    last_used    refBit"<< endl;
+            cout << "\tframe_id    page_id    mode    pinCount    pin    last_used    refBit"<< endl;
             for (auto& frame: bufferPool){
                 cout << '\t' << frame->getId() << "\t\t";
                 if (frame->getPagina() == nullptr){
-                    cout << "-" << "\t-" << "\t-" << "\t\t-" << "\t-" << endl;
+                    cout << "-" << "\t-" << "\t-" << "\t    -" << "\t\t-" << "\t-" << endl;
                 } else {
                     cout << frame->getPagina()->id << "\t";
                     if (frame->getDirty()) cout << "W\t";
                     else cout << "R\t";
-                    cout << frame->getPinCount() << "\t\t" << frame->getLastUsed() << "\t" << static_cast<int>(frame->getRefBit());
+                    cout << frame->getPinCount() << "\t     " << static_cast<int>(frame->getPin()) << "\t\t" << frame->getLastUsed() << "\t" << static_cast<int>(frame->getRefBit());
                     cout << endl;
                 }
             }
@@ -199,12 +213,14 @@ class BufferManager {
             if (framePage) {
                 framePage->incrementPinCount(); // Incrementa pinCount porque la página comenzará a ser usada.
                 if (methodReplace == "CLOCK") {
-                    framePage->setRefBit(true); // Establece el bit de referencia a 1 para CLOCK       
+                    if (framePage->getPin() == false) //Se verifica que el pin sea falso para poder cambiar el refBit en CLOCK
+                        framePage->setRefBit(true); // Establece el bit de referencia a 1 para CLOCK       
                 } else {
+                    //f(framePage->getPin() == false && methodReplace != "LRU")
                     aumentarLastUsed();         // Aumenta lastUsed para todos los frames en uso.
                 }
             } else {
-                cout << "\tError: No se pudo encontrar o crear un frame para la página " << pageId << endl;
+                cout << "\tError: No se pudo encontrar o crear un frame para la pagin " << pageId << endl;
                 return;
             }         
             
@@ -242,7 +258,7 @@ class BufferManager {
             
             // Verifica si el buffer está lleno y ajusta la búsqueda de frame libre
             for (auto& frame : bufferPool) {
-                if (frame->getPinCount() == 0) {
+                if (frame->getPin() == false && frame->getPinCount() == 0) { // Se añade la verificacion de pin (si está fijado o no)
                     if (!bufferIsFull) {
                         framePage = frame;
                         break;
@@ -263,7 +279,7 @@ class BufferManager {
 
                 // Manejo de errores si aún no hay frame disponible
                 if (!framePage) {
-                    cout << "\tNo se pudo agregar la página porque no hay frames libres ni reemplazables." << endl;
+                    cout << "\tNo se pudo agregar la pagina porque no hay frames libres ni reemplazables." << endl;
                     return;                 // Salir si no se encuentra un frame reemplazable
                 }
             }
@@ -312,7 +328,7 @@ class BufferManager {
 
             for (auto& frame : bufferPool) {
                 cout << "Frame ID: " << frame->getId() << " Pin Count: " << frame->getPinCount() << " Last Used: " << frame->getLastUsed() << endl;
-                if (frame->getPinCount() == 0 && frame->getLastUsed() > highestLastUsed) {
+                if (frame->getPin() == false && frame->getPinCount() == 0 && frame->getLastUsed() > highestLastUsed ) { // Se añade la verificacion de pin (si está fijado o no)
                     frameToReplace = frame;
                     highestLastUsed = frame->getLastUsed();
                 }
@@ -343,7 +359,7 @@ class BufferManager {
 
             for (auto& frame : bufferPool) {
                 cout << "---------- Frame ID: " << frame->getId() << " Pin Count: " << frame->getPinCount() << " Last Used: " << frame->getLastUsed() << endl;
-                if (frame->getPinCount() == 0 && frame->getLastUsed() < lowestLastUsed) {
+                if (frame->getPin() == false && frame->getPinCount() == 0 && frame->getLastUsed() < lowestLastUsed) {  // Se añade la verificacion de pin (si está fijado o no)
                     frameToReplace = frame;
                     lowestLastUsed = frame->getLastUsed();
                 }
@@ -378,24 +394,26 @@ class BufferManager {
             while (true) {
                 Frame* frame = bufferPool[clockHand];
 
-                if (frame->getRefBit()) {
-                    frame->setRefBit(false);
-                    cout << "\t*** SECOND CHANCE! ***" << endl;
-                } else {
-                    // Procede a reemplazar el frame seleccionado.
-                    if (frame->getPinCount() == 0) {
+                if (frame->getPin() == false) {  // Se añade la verificacion de pin (si está fijado o no)
+                    if (frame->getRefBit()) {
+                        frame->setRefBit(false);
+                        cout << "\t*** SECOND CHANCE! ***" << endl;
+                    } else {
+                        // Procede a reemplazar el frame seleccionado.
+                        if (frame->getPinCount() == 0) {
 
-                        if (frame->getDirty()) {
-                            cout << endl;
-                            flushPage(frame->getPagina()->id); // Guardar cambios si está dirty
-                            cout << endl;
-                        }
-                        freePage(frame->getPagina()->id); // Liberar la página actual del frame
-                        clockHand = (clockHand + 1) % bufferPoolSize;
-                        cout << "\t clockHand -> " << clockHand << endl;
-                        
-                        return frame;
-                    } 
+                            if (frame->getDirty()) {
+                                cout << endl;
+                                flushPage(frame->getPagina()->id); // Guardar cambios si está dirty
+                                cout << endl;
+                            }
+                            freePage(frame->getPagina()->id); // Liberar la página actual del frame
+                            clockHand = (clockHand + 1) % bufferPoolSize;
+                            cout << "\t clockHand -> " << clockHand << endl;
+                            
+                            return frame;
+                        } 
+                    }
                 }
 
                 clockHand = (clockHand + 1) % bufferPoolSize;
@@ -455,6 +473,40 @@ class BufferManager {
             // Usa la pageTable para verificar si el ID de página está presente
             return pageTable.count(pageId) > 0;
         }
+
+        /*
+        AUTORES: Melany Cahuana y Andrea Cuela
+        Función encargada de pinnear una pagina en un frame
+        */
+        void markPagePinned(int pageId) {
+            Frame* framePage;
+            if (pageTable.count(pageId)) {
+                framePage = bufferPool[pageTable[pageId]];
+                if (framePage->getPin()) {
+                    cout << "\tERROR: La pagina " << pageId << " ya esta fijada!\n";
+                } else {
+                    framePage->pinPage();
+                    cout << "\tPagina " << pageId << " fijada.\n";
+                }
+            }
+        }
+
+        /*
+        AUTORES: Melany Cahuana y Andrea Cuela
+        Función encargada de unpinnear una pagina en un frame
+        */
+        void markPageUnpinned(int pageId) {
+            Frame* framePage;
+            if (pageTable.count(pageId)) {
+                framePage = bufferPool[pageTable[pageId]];
+                if (!framePage->getPin())
+                    cout << "\tERROR: La pagina " << pageId << " no esta fijada!\n";
+                else {
+                    framePage->unnpinPage();
+                    cout << "\tPagina " << pageId << " desfijada.\n";
+                }
+            }
+        }
 };
 
 void solicitarPagina(){
@@ -484,15 +536,16 @@ void liberarPagina() {
 
     if (bm->pageExists(pageId)) { 
         bm->unpinPage(pageId);
-        cout << "\tPinCount de la página ha sido decrementado.\n";
+        cout << "\tPinCount de la pagina ha sido decrementado.\n";
     } else {
-        cout << "\tLa página con ID " << pageId << " no existe en el buffer.\n";
+        cout << "\tLa pagin con ID " << pageId << " no existe en el buffer.\n";
     }
 }
 
 void menu()
 {
     char opcion;
+    int pageId;
     cout << "---------------------------\n";
     cout << ">>>> BUFFER MANAGER\n";
     cout << "---------------------------\n";
@@ -506,10 +559,12 @@ void menu()
         cout << ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><\n";
         cout << ">> OPTIONS\n";
         cout << "1. Solicitar una pagina\n";
-        cout << "2. Imprimir Buffer Pool\n";
-        cout << "3. Liberar una pagina\n";
-        cout << "4. Imprimir Hit Rate\n";
-        cout << "5. Salir\n";
+        cout << "2. Fijar una pagina\n";
+        cout << "3. Desfijar una pagina\n";
+        cout << "4. Liberar una pagina\n";        
+        cout << "5. Imprimir Page Table (Buffer Pool)\n";
+        cout << "6. Imprimir Hit Rate\n";
+        cout << "7. Salir\n";
         cout << "Opcion? ";
         cin >> opcion;
         
@@ -518,22 +573,46 @@ void menu()
             case '1':
                 solicitarPagina();
                 break;
-            case '2':
-                bm->printFrame();
+            case '2': 
+            {
+                int pageId;
+                cout << "\tIngrese el ID de la pagina a fijar: ";
+                cin >> pageId;
+
+                if (bm->pageExists(pageId))
+                    bm->markPagePinned(pageId);
+                else
+                    cout << "\tLa pagina con ID " << pageId << " no existe en el buffer.\n";
                 break;
+            }
             case '3':
+            {
+                int pageId;
+                cout << "\tIngrese el ID de la pagina a desfijar: ";
+                cin >> pageId;
+
+                if (bm->pageExists(pageId))
+                    bm->markPageUnpinned(pageId);
+                else
+                    cout << "\tLa pagina con ID " << pageId << " no existe en el buffer.\n";
+                break;
+            }
+            case '4':
                 liberarPagina();
                 break;
-            case '4':
+            case '5':
+                bm->printFrame();
+                break;
+            case '6':
                 cout << "\t> HIT RATE: " << bm->hitRate() << endl;
                 break;
-            case '5':
+            case '7':
                 cout << "\t> ADIOS!\n";
                 break;
             default:
                 break;
         }
-    } while (opcion != '5');
+    } while (opcion != '7');
 }
 
 int main (){
