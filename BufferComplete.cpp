@@ -108,7 +108,7 @@ class BufferManager {
             }
 
             //MRU, LRU, CLOCK
-            methodReplace = "LRU"; //INDICADOR DE MÉTODO DE REEMPLAZO
+            methodReplace = "CLOCK"; //INDICADOR DE MÉTODO DE REEMPLAZO
         }
 
         ~BufferManager() {
@@ -162,15 +162,15 @@ class BufferManager {
         */
         void printFrame(){
             cout << "\t> Buffer Pool\n";
-            cout << "\tframe_id    page_id    mode    pinCount    pin    last_used    refBit"<< endl;
+            cout << "\tframe_id    page_id    dirtyBit    pinCount    pinned    last_used    refBit"<< endl;
             for (auto& frame: bufferPool){
                 cout << '\t' << frame->getId() << "\t\t";
                 if (frame->getPagina() == nullptr){
-                    cout << "-" << "\t-" << "\t-" << "\t    -" << "\t\t-" << "\t-" << endl;
+                    cout << "-" << "\t-" << "\t\t-" << "\t    -" << "\t\t-" << "\t-" << endl;
                 } else {
                     cout << frame->getPagina()->id << "\t";
-                    if (frame->getDirty()) cout << "W\t";
-                    else cout << "R\t";
+                    if (frame->getDirty()) cout << "1\t\t";
+                    else cout << "0\t\t";
                     cout << frame->getPinCount() << "\t     " << static_cast<int>(frame->getPin()) << "\t\t" << frame->getLastUsed() << "\t" << static_cast<int>(frame->getRefBit());
                     cout << endl;
                 }
@@ -240,7 +240,10 @@ class BufferManager {
             Frame* framePage;
             if (pageTable.count(pageId)) {
                 framePage = bufferPool[pageTable[pageId]];
+                if (framePage->getDirty() == true) flushPage(pageId);
                 framePage->decrementPinCount();
+                framePage->setDirty(false); 
+                // tenemos que ver la cola de solicitudes, vincular
             }
         }
         
