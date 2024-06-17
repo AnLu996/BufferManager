@@ -1,6 +1,7 @@
 #include <iostream>
 #include <map>
 #include <vector>
+#include <queue>
 
 using namespace std;
 
@@ -25,51 +26,61 @@ class Frame {
         Page* pagina;
         bool dirtyFlag;
         int pinCount;
-        bool pin; //Pin o unnpin page
-
+        bool pin; //Pin o unpin page
         int lastUsed;
         bool refBit;
     public:
+
+        queue<bool> dirtyQueue;
+
         Frame(int id): dirtyFlag(0), pinCount(0), lastUsed(0), refBit(false), pin(false) {
             this->id = id;
             pagina = nullptr;
         }
-
-        int getId(){ return id;  }
-        
-        int getPinCount(){  return pinCount;    }
-
-        bool getPin(){  return pin;    }  //Pin o unnpin page
-
-        int getLastUsed(){  return lastUsed;    }
-
-        bool getRefBit(){  return refBit;    }
-
-        void setRefBit(bool state){  this->refBit = state;      }
         
         void resetFrame() {
             delete pagina;
             pagina = nullptr;
             dirtyFlag = false;
             pinCount = 0;
-            pin = 0; //Pin o unnpin page
+            pin = 0; //Pin o unpin page
             lastUsed = 0;
             refBit = false;
         }
 
         Page* getPagina() { return pagina; }
+        int getId(){ return id;  }
         void setPage(Page *pag) { this->pagina = pag; }
+
+        int getPinCount(){  return pinCount;    }
+
+        bool getRefBit(){  return refBit;    }
+        void setRefBit(bool state){  this->refBit = state;      }
+
         void incrementPinCount() { pinCount++; }
         void decrementPinCount() { if (pinCount > 0) pinCount--; }
-        void setLastUsed(int lused) { this->lastUsed = lused; }
-        bool getDirty() { return dirtyFlag; }
-        void setDirty(bool accion) { dirtyFlag = accion; }
+
         void saveChanges() { if (pagina) pagina->save(); }
+
+        int getLastUsed(){  return lastUsed;    }
+        void setLastUsed(int lused) { this->lastUsed = lused; }
         void incrementLastUsed() {   lastUsed++; }
 
-        void pinPage() { this->pin = true; }  //Pin o unnpin page
+        bool getPin(){  return pin;    }  //Pin o unpin page
+        void pinPage() { this->pin = true; }  //Pin o unpin page
+        void unpinPage() { this->pin = false; } //Pin o unpin page
 
-        void unnpinPage() { this->pin = false; } //Pin o unnpin page
+        void insertDirtyQueue() {   dirtyQueue.push(dirtyFlag);     }
+        void removeDirtyQueue() { dirtyQueue.pop(); }
+        void setDirty(bool accion) 
+        { 
+            dirtyFlag = accion; 
+        }
+        bool getDirty() 
+        { 
+            //return dirtyFlag; 
+            return dirtyQueue.front();
+        }
 
 };
 
@@ -162,16 +173,13 @@ class BufferManager {
         */
         void printFrame(){
             cout << "\t> Buffer Pool\n";
-            cout << "\tframe_id    page_id    dirtyBit    pinCount    pinned    last_used    refBit"<< endl;
+            cout << "\tframe_id    page_id    dirtyBit    pinCount      pinned    last_used    refBit"<< endl;
             for (auto& frame: bufferPool){
                 cout << '\t' << frame->getId() << "\t\t";
                 if (frame->getPagina() == nullptr){
                     cout << "-" << "\t-" << "\t\t-" << "\t    -" << "\t\t-" << "\t-" << endl;
                 } else {
-                    cout << frame->getPagina()->id << "\t";
-                    if (frame->getDirty()) cout << "1\t\t";
-                    else cout << "0\t\t";
-                    cout << frame->getPinCount() << "\t     " << static_cast<int>(frame->getPin()) << "\t\t" << frame->getLastUsed() << "\t" << static_cast<int>(frame->getRefBit());
+                    cout << frame->getPagina()->id << "\t" << static_cast<int>(frame->getDirty()) << "\t\t" << frame->getPinCount() << "\t     " << static_cast<int>(frame->getPin()) << "\t\t" << frame->getLastUsed() << "\t" << static_cast<int>(frame->getRefBit());
                     cout << endl;
                 }
             }
@@ -181,6 +189,23 @@ class BufferManager {
         }
 
         float hitRate() { return (float)hits/solicitudes; }
+
+        void printQueueReq(Frame* framePage) {
+            
+            if (framePage == nullptr) { std::cout << "framePage es null.\n"; return;  }
+
+            //std::queue<std::string> temp = framePage->dirtyQueue; // crea una copia de dirtyQueue
+
+            // Asegúrate de que dirtyQueue no está vacía
+            if (framePage->dirtyQueue.empty()) { std::cout << "dirtyQueue está vacía.\n"; return;}
+
+            // Imprime los elementos de dirtyQueue
+            std::queue<bool> temp = framePage->dirtyQueue; // crea una copia de dirtyQueue
+            while (!temp.empty()) {
+                std::cout << static_cast<int>(temp.front()) << ",";
+                temp.pop();
+            }
+        }
 
         /*
         AUTORES: Andrea Cuela, Melany Cahuana y Giomar Muñoz
@@ -195,7 +220,8 @@ class BufferManager {
                 hits++;
                 framePage = bufferPool[pageTable[pageId]];
                 if (framePage->getDirty() && !accion) flushPage(pageId);
-                framePage->setDirty(accion);    //si va a cambiar a modo lectura
+                framePage->setDirty(accion); //si va a cambiar a modo lectura
+                framePage->insertDirtyQueue();
                 if (methodReplace != "CLOCK") {
                     framePage->setLastUsed(0);  //resetea lastUsed a 0 si se est agregando de nuevo esa pagina
                 }      
@@ -229,6 +255,9 @@ class BufferManager {
             cout << "\tNro de solicitud: "<< solicitudes << endl;
             cout << "\tMisses: " << miss << endl;
             cout << "\tHits: " << hits << endl;
+            cout << "\tCola de requerimientos: ";
+            printQueueReq(framePage);
+            cout << endl;
         }
 
         /*
@@ -244,6 +273,10 @@ class BufferManager {
                 framePage->decrementPinCount();
                 framePage->setDirty(false); 
                 // tenemos que ver la cola de solicitudes, vincular
+                framePage->removeDirtyQueue();
+                cout << "\tCola de requerimientos: ";
+                printQueueReq(framePage);
+                cout << endl;
             }
         }
         
@@ -291,6 +324,7 @@ class BufferManager {
             framePage->setPage(page); 
             pageTable[pageId] = framePage->getId();
             framePage->setDirty(accion);    // Asigna si está en escritura o en lectura
+            framePage->insertDirtyQueue();  //Inserta el requerimiento en la cola
             if (methodReplace == "CLOCK") {
                 framePage->setRefBit(true); // Establece el bit de referencia a 1 para CLOCK       
             } else {
@@ -505,7 +539,7 @@ class BufferManager {
                 if (!framePage->getPin())
                     cout << "\tERROR: La pagina " << pageId << " no esta fijada!\n";
                 else {
-                    framePage->unnpinPage();
+                    framePage->unpinPage();
                     cout << "\tPagina " << pageId << " desfijada.\n";
                 }
             }
