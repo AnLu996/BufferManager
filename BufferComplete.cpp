@@ -26,11 +26,11 @@ class Frame {
         Page* pagina;
         bool dirtyFlag;
         int pinCount;
-        bool pin; //Pin o unpin page
+        bool pin; //Pin o unnpin page
         int lastUsed;
         bool refBit;
+    
     public:
-
         queue<bool> dirtyQueue;
 
         Frame(int id): dirtyFlag(0), pinCount(0), lastUsed(0), refBit(false), pin(false) {
@@ -72,16 +72,8 @@ class Frame {
 
         void insertDirtyQueue() {   dirtyQueue.push(dirtyFlag);     }
         void removeDirtyQueue() { dirtyQueue.pop(); }
-        void setDirty(bool accion) 
-        { 
-            dirtyFlag = accion; 
-        }
-        bool getDirty() 
-        { 
-            //return dirtyFlag; 
-            return dirtyQueue.front();
-        }
-
+        void setDirty(bool accion) { dirtyFlag = accion; }
+        bool getDirty() { return dirtyQueue.front(); }
 };
 
 class BufferManager {
@@ -119,7 +111,7 @@ class BufferManager {
             }
 
             //MRU, LRU, CLOCK
-            methodReplace = "CLOCK"; //INDICADOR DE MÉTODO DE REEMPLAZO
+            methodReplace = "MRU"; //INDICADOR DE MÉTODO DE REEMPLAZO
         }
 
         ~BufferManager() {
@@ -143,10 +135,9 @@ class BufferManager {
             return true;
         }
 
-
         /*
         AUTORES: Melany Cahuana
-        Imprime los valores del page table (id pagina y id frame)
+        Imprime los valores de la cola de solicitudes (id pagina y id frame)
         */
         void printPageTable(){
             cout << "Page table: "<<endl;
@@ -169,17 +160,30 @@ class BufferManager {
         /*
         AUTORES: Andrea Cuela y Melany Cahuana
         Se imprime informacion del frame:
-            frame_id, page_id, mode (dirty bit), pinCount, last_used    
+            frame_id, page_id, mode (dirty bit), pinCount, last_used, refbit    
         */
         void printFrame(){
             cout << "\t> Buffer Pool\n";
-            cout << "\tframe_id    page_id    dirtyBit    pinCount      pinned    last_used    refBit"<< endl;
+            cout << "\tframe_id    page_id    dirtyBit    pinCount      pinned    ";
+            
+            if (methodReplace == "MRU" || methodReplace == "LRU ")
+                cout << "last_used" << endl;
+            else 
+                cout << "  refBit" << endl;
+
             for (auto& frame: bufferPool){
                 cout << '\t' << frame->getId() << "\t\t";
                 if (frame->getPagina() == nullptr){
-                    cout << "-" << "\t-" << "\t\t-" << "\t    -" << "\t\t-" << "\t-" << endl;
+                    cout << "-" << "\t  -" << "\t\t-" << "\t    -" << "\t\t-" << endl;
+
                 } else {
-                    cout << frame->getPagina()->id << "\t" << static_cast<int>(frame->getDirty()) << "\t\t" << frame->getPinCount() << "\t     " << static_cast<int>(frame->getPin()) << "\t\t" << frame->getLastUsed() << "\t" << static_cast<int>(frame->getRefBit());
+                    cout << frame->getPagina()->id << "\t  " <<static_cast<int>(frame->getDirty()) << "\t\t" << frame->getPinCount() << "\t     " << static_cast<int>(frame->getPin());
+                    
+                    if (methodReplace == "MRU" || methodReplace == "LRU ")
+                        cout << "\t\t" << frame->getLastUsed();
+                    else 
+                        cout << "\t\t" << static_cast<int>(frame->getRefBit());
+
                     cout << endl;
                 }
             }
@@ -190,19 +194,21 @@ class BufferManager {
 
         float hitRate() { return (float)hits/solicitudes; }
 
+        /*
+        AUTORES: Andrea Cuela
+        Imprime las solicitudes que hay para una pagina (frame)
+        */
         void printQueueReq(Frame* framePage) {
             
-            if (framePage == nullptr) { std::cout << "framePage es null.\n"; return;  }
-
-            //std::queue<std::string> temp = framePage->dirtyQueue; // crea una copia de dirtyQueue
+            if (framePage == nullptr) { cout << "framePage es null.\n"; return;  }
 
             // Asegúrate de que dirtyQueue no está vacía
-            if (framePage->dirtyQueue.empty()) { std::cout << "dirtyQueue está vacía.\n"; return;}
+            if (framePage->dirtyQueue.empty()) { cout << "dirtyQueue está vacía.\n"; return;}
 
             // Imprime los elementos de dirtyQueue
-            std::queue<bool> temp = framePage->dirtyQueue; // crea una copia de dirtyQueue
+            queue<bool> temp = framePage->dirtyQueue; // crea una copia de dirtyQueue
             while (!temp.empty()) {
-                std::cout << static_cast<int>(temp.front()) << ",";
+                cout << static_cast<int>(temp.front()) << ",";
                 temp.pop();
             }
         }
@@ -220,7 +226,7 @@ class BufferManager {
                 hits++;
                 framePage = bufferPool[pageTable[pageId]];
                 if (framePage->getDirty() && !accion) flushPage(pageId);
-                framePage->setDirty(accion); //si va a cambiar a modo lectura
+                framePage->setDirty(accion);    //si va a cambiar a modo lectura
                 framePage->insertDirtyQueue();
                 if (methodReplace != "CLOCK") {
                     framePage->setLastUsed(0);  //resetea lastUsed a 0 si se est agregando de nuevo esa pagina
@@ -242,7 +248,6 @@ class BufferManager {
                     if (framePage->getPin() == false) //Se verifica que el pin sea falso para poder cambiar el refBit en CLOCK
                         framePage->setRefBit(true); // Establece el bit de referencia a 1 para CLOCK       
                 } else {
-                    //f(framePage->getPin() == false && methodReplace != "LRU")
                     aumentarLastUsed();         // Aumenta lastUsed para todos los frames en uso.
                 }
             } else {
@@ -261,7 +266,7 @@ class BufferManager {
         }
 
         /*
-        AUTORES: Melany Cahuana
+        AUTORES: Melany Cahuana y Andrea Cuela
         Maneja la operacion de 'despinear' una pagina de acuerdo a su id, decrementando
         su pincount (indicando que se estan disminuyendo accesos a esa pagina)
         */
@@ -269,6 +274,7 @@ class BufferManager {
             Frame* framePage;
             if (pageTable.count(pageId)) {
                 framePage = bufferPool[pageTable[pageId]];
+
                 if (framePage->getDirty() == true) flushPage(pageId);
                 framePage->decrementPinCount();
                 framePage->setDirty(false); 
